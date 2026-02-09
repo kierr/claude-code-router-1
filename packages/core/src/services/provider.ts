@@ -6,14 +6,17 @@ import {
   RequestRouteInfo,
   ConfigProvider,
 } from "../types/llm";
-import { ConfigService } from "./config"; 
+import { ConfigService } from "./config";
 import { TransformerService } from "./transformer";
+import { ApiKeyService } from "./apiKey";
 
 export class ProviderService {
   private providers: Map<string, LLMProvider> = new Map();
   private modelRoutes: Map<string, ModelRoute> = new Map();
+  private apiKeyService: ApiKeyService;
 
   constructor(private readonly configService: ConfigService, private readonly transformerService: TransformerService, private readonly logger: any) {
+    this.apiKeyService = new ApiKeyService();
     this.initializeCustomProviders();
   }
 
@@ -29,10 +32,14 @@ export class ProviderService {
   private initializeFromProvidersArray(providersConfig: ConfigProvider[]) {
     providersConfig.forEach((providerConfig: ConfigProvider) => {
       try {
+        // Check for legacy api_key or new api_keys format
+        const hasLegacyApiKey = !!providerConfig.api_key;
+        const hasNewApiKeys = !!providerConfig.api_keys && providerConfig.api_keys.length > 0;
+
         if (
           !providerConfig.name ||
           !providerConfig.api_base_url ||
-          !providerConfig.api_key
+          (!hasLegacyApiKey && !hasNewApiKeys)
         ) {
           return;
         }
@@ -83,13 +90,17 @@ export class ProviderService {
           })
         }
 
-        this.registerProvider({
+        // Normalize to new api_keys format
+        const normalizedProvider = this.apiKeyService.normalizeProviderKeys({
           name: providerConfig.name,
           baseUrl: providerConfig.api_base_url,
           apiKey: providerConfig.api_key,
+          apiKeys: providerConfig.api_keys,
           models: providerConfig.models || [],
           transformer: providerConfig.transformer ? transformer : undefined,
         });
+
+        this.registerProvider(normalizedProvider);
 
         this.logger.info(`${providerConfig.name} provider registered`);
       } catch (error) {
@@ -99,8 +110,10 @@ export class ProviderService {
   }
 
   registerProvider(request: RegisterProviderRequest): LLMProvider {
+    // Normalize keys to new format
+    const normalizedRequest = this.apiKeyService.normalizeProviderKeys(request);
     const provider: LLMProvider = {
-      ...request,
+      ...normalizedRequest,
     };
 
     this.providers.set(provider.name, provider);
@@ -191,6 +204,15 @@ export class ProviderService {
     if (!provider) {
       return false;
     }
+
+    // Update provider with new enabled state
+    const updatedProvider = {
+      ...provider,
+      enabled,
+      updatedAt: new Date(),
+    };
+
+    this.providers.set(name, updatedProvider);
     return true;
   }
 
@@ -283,5 +305,12 @@ export class ProviderService {
       object: "list",
       data: models,
     };
+  }
+
+  /**
+   * Get the ApiKeyService instance
+   */
+  getApiKeyService(): ApiKeyService {
+    return this.apiKeyService;
   }
 }

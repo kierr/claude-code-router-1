@@ -29,6 +29,7 @@ import { ConfigService, AppConfig } from "./services/config";
 import { errorHandler } from "./api/middleware";
 import { registerApiRoutes } from "./api/routes";
 import { ProviderService } from "./services/provider";
+import { ApiKeyService } from "./services/apiKey";
 import { TransformerService } from "./services/transformer";
 import { TokenizerService } from "./services/tokenizer";
 import { router, calculateTokenCount, searchProjectBySession } from "./utils/router";
@@ -69,7 +70,8 @@ function createApp(options: FastifyServerOptions = {}): FastifyInstance {
 class Server {
   private app: FastifyInstance;
   configService: ConfigService;
-  providerService!: ProviderService;
+  providerService: ProviderService;
+  apiKeyService: ApiKeyService;
   transformerService: TransformerService;
   tokenizerService: TokenizerService;
 
@@ -80,6 +82,7 @@ class Server {
       logger: fastifyOptions.logger ?? true,
     });
     this.configService = new ConfigService(options);
+    this.apiKeyService = new ApiKeyService();
     this.transformerService = new TransformerService(
       this.configService,
       this.app.log
@@ -88,13 +91,6 @@ class Server {
       this.configService,
       this.app.log
     );
-    this.transformerService.initialize().finally(() => {
-      this.providerService = new ProviderService(
-        this.configService,
-        this.transformerService,
-        this.app.log
-      );
-    });
     // Initialize tokenizer service
     this.tokenizerService.initialize().catch((error) => {
       this.app.log.error(`Failed to initialize TokenizerService: ${error}`);
@@ -137,6 +133,7 @@ class Server {
     if (name === '/') {
       await this.app.register(async (fastify) => {
         fastify.decorate('configService', this.configService);
+        fastify.decorate('apiKeyService', this.apiKeyService);
         fastify.decorate('transformerService', this.transformerService);
         fastify.decorate('providerService', this.providerService);
         fastify.decorate('tokenizerService', this.tokenizerService);
@@ -161,6 +158,7 @@ class Server {
         Router: options.Router,
       }
     });
+    const apiKeyService = new ApiKeyService();
     const transformerService = new TransformerService(
       configService,
       this.app.log
@@ -178,6 +176,7 @@ class Server {
     await tokenizerService.initialize();
     await this.app.register(async (fastify) => {
       fastify.decorate('configService', configService);
+      fastify.decorate('apiKeyService', apiKeyService);
       fastify.decorate('transformerService', transformerService);
       fastify.decorate('providerService', providerService);
       fastify.decorate('tokenizerService', tokenizerService);
@@ -198,6 +197,14 @@ class Server {
   async start(): Promise<void> {
     try {
       this.app._server = this;
+
+      // Wait for transformer initialization and provider service setup
+      await this.transformerService.initialize();
+      this.providerService = new ProviderService(
+        this.configService,
+        this.transformerService,
+        this.app.log
+      );
 
       this.app.addHook("preHandler", (req, reply, done) => {
         const url = new URL(`http://127.0.0.1${req.url}`);
@@ -270,6 +277,7 @@ export { searchProjectBySession };
 export type { RouterScenarioType, RouterFallbackConfig } from "./utils/router";
 export { ConfigService } from "./services/config";
 export { ProviderService } from "./services/provider";
+export { ApiKeyService } from "./services/apiKey";
 export { TransformerService } from "./services/transformer";
 export { TokenizerService } from "./services/tokenizer";
 export { pluginManager, tokenSpeedPlugin, getTokenSpeedStats, getGlobalTokenSpeedStats, CCRPlugin, CCRPluginOptions, PluginMetadata } from "./plugins";

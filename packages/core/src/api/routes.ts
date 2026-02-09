@@ -4,12 +4,13 @@ import {
   FastifyRequest,
   FastifyReply,
 } from "fastify";
-import { RegisterProviderRequest, LLMProvider } from "@/types/llm";
+import { RegisterProviderRequest, LLMProvider, ApiKeyConfig } from "@/types/llm";
 import { sendUnifiedRequest } from "@/utils/request";
 import { createApiError } from "./middleware";
 import { version } from "../../package.json";
 import { ConfigService } from "@/services/config";
 import { ProviderService } from "@/services/provider";
+import { ApiKeyService } from "@/services/apiKey";
 import { TransformerService } from "@/services/transformer";
 import { Transformer } from "@/types/transformer";
 
@@ -18,6 +19,7 @@ declare module "fastify" {
   interface FastifyInstance {
     configService: ConfigService;
     providerService: ProviderService;
+    apiKeyService: ApiKeyService;
     transformerService: TransformerService;
   }
 
@@ -189,7 +191,7 @@ async function handleFallback(
     }
   }
 
-  req.log.error(`All fallback models failed for yichu ${scenarioType}`);
+  req.log.error(`All fallback models failed for scenario ${scenarioType}`);
   return null;
 }
 
@@ -332,10 +334,27 @@ async function sendRequestToProvider(
     }
   }
 
+  // Select API key using ApiKeyService
+  const apiKeyService = fastify.apiKeyService || fastify.providerService.getApiKeyService();
+  const apiKeyConfig = apiKeyService.selectApiKey(provider);
+
+  if (!apiKeyConfig) {
+    throw createApiError(
+      'No enabled API keys available for provider',
+      500,
+      'no_api_key'
+    );
+  }
+
+  // Determine proxy: key-specific > provider-level > global
+  const httpsProxy = apiKeyConfig.proxy_url
+    || provider.proxy_url
+    || fastify.configService.getHttpsProxy();
+
   // Send HTTP request
   // Prepare headers
   const requestHeaders: Record<string, string> = {
-    Authorization: `Bearer ${provider.apiKey}`,
+    Authorization: `Bearer ${apiKeyConfig.key}`,
     ...(config?.headers || {}),
   };
 
@@ -354,7 +373,7 @@ async function sendRequestToProvider(
     url,
     requestBody,
     {
-      httpsProxy: fastify.configService.getHttpsProxy(),
+      httpsProxy,
       ...config,
       headers: JSON.parse(JSON.stringify(requestHeaders)),
     },
@@ -500,9 +519,23 @@ export const registerApiRoutes = async (
             type: { type: "string", enum: ["openai", "anthropic"] },
             baseUrl: { type: "string" },
             apiKey: { type: "string" },
+            apiKeys: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  key: { type: "string" },
+                  label: { type: "string" },
+                  proxy_url: { type: "string" },
+                  weight: { type: "number" },
+                  enabled: { type: "boolean" }
+                },
+                required: ["key"]
+              }
+            },
             models: { type: "array", items: { type: "string" } },
           },
-          required: ["id", "name", "type", "baseUrl", "apiKey", "models"],
+          required: ["id", "name", "type", "baseUrl", "models"],
         },
       },
     },
@@ -511,7 +544,7 @@ export const registerApiRoutes = async (
       reply: FastifyReply
     ) => {
       // Validation
-      const { name, baseUrl, apiKey, models } = request.body;
+      const { name, baseUrl, apiKey, apiKeys, models } = request.body;
 
       if (!name?.trim()) {
         throw createApiError(
@@ -529,8 +562,29 @@ export const registerApiRoutes = async (
         );
       }
 
-      if (!apiKey?.trim()) {
-        throw createApiError("API key is required", 400, "invalid_request");
+      // Check for legacy apiKey or new apiKeys format
+      const hasLegacyApiKey = !!apiKey?.trim();
+      const hasNewApiKeys = !!apiKeys && Array.isArray(apiKeys) && apiKeys.length > 0;
+
+      if (!hasLegacyApiKey && !hasNewApiKeys) {
+        throw createApiError(
+          "At least one API key is required (use 'apiKey' for legacy single key or 'apiKeys' for multiple keys)",
+          400,
+          "invalid_request"
+        );
+      }
+
+      // Validate apiKeys structure if provided
+      if (hasNewApiKeys) {
+        for (const keyConfig of apiKeys) {
+          if (!keyConfig.key || !keyConfig.key.trim()) {
+            throw createApiError(
+              "All API keys in apiKeys array must have a non-empty 'key' field",
+              400,
+              "invalid_request"
+            );
+          }
+        }
       }
 
       if (!models || !Array.isArray(models) || models.length === 0) {
@@ -596,6 +650,20 @@ export const registerApiRoutes = async (
             type: { type: "string", enum: ["openai", "anthropic"] },
             baseUrl: { type: "string" },
             apiKey: { type: "string" },
+            apiKeys: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  key: { type: "string" },
+                  label: { type: "string" },
+                  proxy_url: { type: "string" },
+                  weight: { type: "number" },
+                  enabled: { type: "boolean" }
+                },
+                required: ["key"]
+              }
+            },
             models: { type: "array", items: { type: "string" } },
             enabled: { type: "boolean" },
           },
