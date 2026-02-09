@@ -12,6 +12,7 @@ import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages";
 import { Transformer } from "./transformer";
 import type { ProviderTokenizerConfig } from "./tokenizer";
+import type { ApiKeyConfig } from "@CCR/shared";
 
 export interface UrlCitation {
   url: string;
@@ -200,7 +201,8 @@ export interface ConversionOptions {
 export interface LLMProvider {
   name: string;
   baseUrl: string;
-  apiKey: string;
+  apiKey?: string;                // Legacy single key (deprecated but supported)
+  apiKeys?: ApiKeyConfig[];       // New: multiple keys with config
   models: string[];
   transformer?: {
     [key: string]: {
@@ -228,7 +230,8 @@ export interface RequestRouteInfo {
 export interface ConfigProvider {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;               // Legacy single key (deprecated but supported)
+  api_keys?: ApiKeyConfig[];      // New: multiple keys with config
   models: string[];
   transformer: {
     use?: string[] | Array<any>[];

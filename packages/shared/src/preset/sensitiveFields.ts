@@ -21,8 +21,14 @@ const ENV_VAR_REGEX = /^\$\{?[A-Z_][A-Z0-9_]*\}?$/;
 /**
  * Check if field name is sensitive
  */
-function isSensitiveField(fieldName: string): boolean {
+function isSensitiveField(fieldName: string, parentPath: string = ''): boolean {
   const lowerFieldName = fieldName.toLowerCase();
+
+  // Special case: 'key' is sensitive when inside api_keys array
+  if (fieldName === 'key' && parentPath.includes('api_keys')) {
+    return true;
+  }
+
   return SENSITIVE_PATTERNS.some(pattern =>
     lowerFieldName.includes(pattern.toLowerCase())
   );
@@ -117,8 +123,8 @@ function sanitizeObject(
   for (const [key, value] of Object.entries(config)) {
     const currentPath = path ? `${path}.${key}` : key;
 
-    // Check if this is a sensitive field
-    if (isSensitiveField(key) && typeof value === 'string') {
+    // Check if this is a sensitive field (pass parent path for api_keys detection)
+    if (isSensitiveField(key, path) && typeof value === 'string') {
       // If value is already an environment variable, keep unchanged
       if (isEnvPlaceholder(value)) {
         sanitizedObj[key] = value;
@@ -145,7 +151,13 @@ function sanitizeObject(
           }
         }
 
-        const envVarName = generateEnvVarName('global', entityName, key);
+        // Special handling for 'key' field in api_keys - use api_keys index
+        let fieldName = key;
+        if (key === 'key' && path.includes('api_keys')) {
+          fieldName = 'api_key';
+        }
+
+        const envVarName = generateEnvVarName('global', entityName, fieldName);
         sanitizedObj[key] = `\${${envVarName}}`;
 
         sanitizedCount++;

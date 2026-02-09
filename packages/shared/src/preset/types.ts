@@ -94,11 +94,21 @@ export interface RequiredInput {
   dependsOn?: string[];          // Explicitly declare dependent fields (for optimizing update order)
 }
 
+// API key configuration
+export interface ApiKeyConfig {
+  key: string;
+  label?: string;
+  proxy_url?: string;
+  weight?: number;
+  enabled?: boolean;
+}
+
 // Provider configuration
 export interface ProviderConfig {
   name: string;
   api_base_url: string;
-  api_key: string;
+  api_key?: string;               // Legacy single key (deprecated but supported)
+  api_keys?: ApiKeyConfig[];      // New: multiple keys with config
   models: string[];
   transformer?: any;
   [key: string]: any;
