@@ -41,6 +41,7 @@ export function Providers() {
   const [providerTemplates, setProviderTemplates] = useState<ProviderType[]>([]);
   const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [apiKeyDialogError, setApiKeyDialogError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const comboInputRef = useRef<HTMLInputElement>(null);
@@ -245,10 +246,12 @@ export function Providers() {
       setEditingApiKeyData(editingProviderData.api_keys?.[keyIndex] || null);
       setIsNewApiKey(false);
     }
+    setApiKeyDialogError(null);
     setApiKeyDialogOpen(true);
   };
 
   const closeApiKeyDialog = () => {
+    setApiKeyDialogError(null);
     setApiKeyDialogOpen(false);
     setEditingApiKeyIndex(null);
     setEditingApiKeyData(null);
@@ -260,12 +263,12 @@ export function Providers() {
 
     // Validate API key
     if (!editingApiKeyData.key?.trim()) {
-      setApiKeyError(t("providers.api_key_required"));
+      setApiKeyDialogError(t("providers.api_key_required"));
       return; // Don't save without a key
     }
 
     // Clear error if validation passes
-    setApiKeyError(null);
+    setApiKeyDialogError(null);
 
     const updatedProvider = { ...editingProviderData };
     if (!updatedProvider.api_keys) {
@@ -1337,6 +1340,11 @@ export function Providers() {
                   onCheckedChange={(checked) => setEditingApiKeyData({ ...editingApiKeyData, enabled: checked })}
                 />
               </div>
+
+              {/* Error display */}
+              {apiKeyDialogError && (
+                <p className="text-sm text-red-500">{apiKeyDialogError}</p>
+              )}
             </div>
           )}
           <DialogFooter>
