@@ -46,12 +46,15 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
 
         // Handle case where provider.name might be null or undefined
         const providerName = provider.name || "Unnamed Provider";
-        
+
         // Handle case where provider.api_base_url might be null or undefined
         const apiBaseUrl = provider.api_base_url || "No API URL";
-        
+
         // Handle case where provider.models might be null or undefined
         const models = Array.isArray(provider.models) ? provider.models : [];
+
+        // Calculate API key count (support both legacy api_key and new api_keys)
+        const apiKeyCount = provider.api_keys?.length ?? (provider.api_key ? 1 : 0);
 
         return (
           <div key={index} className="flex items-start justify-between rounded-md border bg-white p-4 transition-all hover:shadow-md animate-slide-in hover:scale-[1.01]">
@@ -59,6 +62,9 @@ export function ProviderList({ providers, onEdit, onRemove }: ProviderListProps)
               <p className="text-md font-semibold text-gray-800">{providerName}</p>
               <p className="text-sm text-gray-500">{apiBaseUrl}</p>
               <div className="flex flex-wrap gap-2 pt-2">
+                <Badge variant="secondary" className="font-normal transition-all-ease hover:scale-105">
+                  {apiKeyCount} {apiKeyCount === 1 ? 'key' : 'keys'}
+                </Badge>
                 {models.map((model, modelIndex) => (
                   // Handle case where model might be null or undefined
                   <Badge key={modelIndex} variant="outline" className="font-normal transition-all-ease hover:scale-105">

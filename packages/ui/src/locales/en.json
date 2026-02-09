@@ -105,7 +105,23 @@
     "api_key_required": "API Key is required",
     "name_required": "Name is required",
     "name_duplicate": "A provider with this name already exists",
-    "search": "Search providers..."
+    "search": "Search providers...",
+    "api_keys": "API Keys",
+    "api_keys_count": "{{count}} keys",
+    "add_api_key": "Add API Key",
+    "edit_api_key": "Edit API Key",
+    "add_api_key_description": "Add a new API key for this provider. You can configure multiple keys for load balancing or redundancy.",
+    "edit_api_key_description": "Edit the API key configuration.",
+    "api_key_label": "Label",
+    "api_key_label_placeholder": "e.g., Production, Backup, Development",
+    "api_key_proxy": "Proxy URL",
+    "api_key_proxy_placeholder": "http://proxy:7890",
+    "api_key_weight": "Weight",
+    "api_key_weight_description": "Used for weighted load balancing. Higher values increase selection probability.",
+    "api_key_enabled": "Enabled",
+    "api_key_empty_warning": "All API keys must have a non-empty key value",
+    "legacy_api_key_warning": "This provider is using the legacy single API key format. Consider migrating to the new multi-key format for better flexibility.",
+    "migrate_to_multi_key": "Migrate to Multi-Key Format"
 
   },
   "router": {

@@ -105,7 +105,23 @@
     "api_key_required": "API 密钥为必填项",
     "name_required": "名称为必填项",
     "name_duplicate": "已存在同名供应商",
-    "search": "搜索供应商..."
+    "search": "搜索供应商...",
+    "api_keys": "API 密钥",
+    "api_keys_count": "{{count}} 个密钥",
+    "add_api_key": "添加 API 密钥",
+    "edit_api_key": "编辑 API 密钥",
+    "add_api_key_description": "为此供应商添加新的 API 密钥。您可以配置多个密钥以实现负载均衡或冗余。",
+    "edit_api_key_description": "编辑 API 密钥配置。",
+    "api_key_label": "标签",
+    "api_key_label_placeholder": "例如：生产环境、备份、开发",
+    "api_key_proxy": "代理地址",
+    "api_key_proxy_placeholder": "http://proxy:7890",
+    "api_key_weight": "权重",
+    "api_key_weight_description": "用于加权负载均衡。较高的值会增加被选中的概率。",
+    "api_key_enabled": "已启用",
+    "api_key_empty_warning": "所有 API 密钥必须具有非空密钥值",
+    "legacy_api_key_warning": "此供应商正在使用旧版单个 API 密钥格式。建议迁移到新的多密钥格式以获得更好的灵活性。",
+    "migrate_to_multi_key": "迁移到多密钥格式"
 
   },
   "router": {

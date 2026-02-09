@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useConfig } from "./ConfigProvider";
 import { ProviderList } from "./ProviderList";
 import {
@@ -14,14 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle } from "lucide-react";
+import { X, Trash2, Plus, Eye, EyeOff, Search, XCircle, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/ui/combobox";
 import { ComboInput } from "@/components/ui/combo-input";
 import { api } from "@/lib/api";
-import type { Provider } from "@/types";
+import type { Provider, ApiKeyConfig } from "@/types";
 
 interface ProviderType extends Provider {}
+
+// Helper to get a unique key for tracking API key visibility
+const getApiKeyVisibilityKey = (providerIndex: number, keyIndex: number) => `${providerIndex}-${keyIndex}`;
 
 export function Providers() {
   const { t } = useTranslation();
@@ -35,11 +39,17 @@ export function Providers() {
   const [editingProviderData, setEditingProviderData] = useState<ProviderType | null>(null);
   const [isNewProvider, setIsNewProvider] = useState<boolean>(false);
   const [providerTemplates, setProviderTemplates] = useState<ProviderType[]>([]);
-  const [showApiKey, setShowApiKey] = useState<Record<number, boolean>>({});
+  const [showApiKey, setShowApiKey] = useState<Record<string, boolean>>({});
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const comboInputRef = useRef<HTMLInputElement>(null);
+
+  // API Key editing dialog state
+  const [editingApiKeyIndex, setEditingApiKeyIndex] = useState<number | null>(null);
+  const [editingApiKeyData, setEditingApiKeyData] = useState<ApiKeyConfig | null>(null);
+  const [isNewApiKey, setIsNewApiKey] = useState<boolean>(false);
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchProviderTemplates = async () => {
@@ -123,13 +133,13 @@ export function Providers() {
 
   const handleSaveProvider = () => {
     if (!editingProviderData) return;
-    
+
     // Validate name
     if (!editingProviderData.name || editingProviderData.name.trim() === '') {
       setNameError(t("providers.name_required"));
       return;
     }
-    
+
     // Check for duplicate names (case-insensitive)
     const trimmedName = editingProviderData.name.trim();
     const isDuplicate = config.Providers.some((provider, index) => {
@@ -139,22 +149,32 @@ export function Providers() {
       }
       return provider.name.toLowerCase() === trimmedName.toLowerCase();
     });
-    
+
     if (isDuplicate) {
       setNameError(t("providers.name_duplicate"));
       return;
     }
-    
-    // Validate API key
-    if (!editingProviderData.api_key || editingProviderData.api_key.trim() === '') {
+
+    // Validate API keys - support both legacy api_key and new api_keys
+    const hasLegacyApiKey = !!editingProviderData.api_key?.trim();
+    const hasNewApiKeys = !!editingProviderData.api_keys && editingProviderData.api_keys.length > 0;
+    const hasValidNewApiKeys = editingProviderData.api_keys?.some(k => k.key?.trim());
+
+    if (!hasLegacyApiKey && !hasNewApiKeys) {
       setApiKeyError(t("providers.api_key_required"));
       return;
     }
-    
+
+    // If using new api_keys format but some keys are empty, show warning
+    if (hasNewApiKeys && !hasValidNewApiKeys) {
+      setApiKeyError(t("providers.api_key_empty_warning"));
+      return;
+    }
+
     // Clear errors if validation passes
     setApiKeyError(null);
     setNameError(null);
-    
+
     if (editingProviderIndex !== null && editingProviderData) {
       const newProviders = [...config.Providers];
       if (isNewProvider) {
@@ -168,7 +188,12 @@ export function Providers() {
     if (editingProviderIndex !== null) {
       setShowApiKey(prev => {
         const newState = { ...prev };
-        delete newState[editingProviderIndex];
+        // Remove all keys starting with this provider index
+        Object.keys(newState).forEach(key => {
+          if (key.startsWith(`${editingProviderIndex}-`)) {
+            delete newState[key];
+          }
+        });
         return newState;
       });
     }
@@ -188,7 +213,12 @@ export function Providers() {
       // Reset API key visibility for this provider
       setShowApiKey(prev => {
         const newState = { ...prev };
-        delete newState[editingProviderIndex];
+        // Remove all keys starting with this provider index
+        Object.keys(newState).forEach(key => {
+          if (key.startsWith(`${editingProviderIndex}-`)) {
+            delete newState[key];
+          }
+        });
         return newState;
       });
     }
@@ -197,6 +227,99 @@ export function Providers() {
     setIsNewProvider(false);
     setApiKeyError(null);
     setNameError(null);
+  };
+
+  // ===== API Key Management Functions =====
+
+  const openApiKeyDialog = (keyIndex?: number, isNew: boolean = false) => {
+    if (!editingProviderData) return;
+
+    if (isNew || keyIndex === undefined) {
+      // Adding new API key
+      setEditingApiKeyIndex(editingProviderData.api_keys?.length || 0);
+      setEditingApiKeyData({ key: '', label: '', proxy_url: '', weight: 1, enabled: true });
+      setIsNewApiKey(true);
+    } else {
+      // Editing existing API key
+      setEditingApiKeyIndex(keyIndex);
+      setEditingApiKeyData(editingProviderData.api_keys?.[keyIndex] || null);
+      setIsNewApiKey(false);
+    }
+    setApiKeyDialogOpen(true);
+  };
+
+  const closeApiKeyDialog = () => {
+    setApiKeyDialogOpen(false);
+    setEditingApiKeyIndex(null);
+    setEditingApiKeyData(null);
+    setIsNewApiKey(false);
+  };
+
+  const handleSaveApiKey = () => {
+    if (!editingProviderData || !editingApiKeyData || editingApiKeyIndex === null) return;
+
+    // Validate API key
+    if (!editingApiKeyData.key?.trim()) {
+      setApiKeyError(t("providers.api_key_required"));
+      return; // Don't save without a key
+    }
+
+    // Clear error if validation passes
+    setApiKeyError(null);
+
+    const updatedProvider = { ...editingProviderData };
+    if (!updatedProvider.api_keys) {
+      updatedProvider.api_keys = [];
+    }
+
+    // Ensure we have enough slots in the array
+    while (updatedProvider.api_keys.length <= editingApiKeyIndex) {
+      updatedProvider.api_keys.push({ key: '', enabled: false });
+    }
+
+    updatedProvider.api_keys[editingApiKeyIndex] = { ...editingApiKeyData };
+    setEditingProviderData(updatedProvider);
+
+    // Also clear legacy api_key if we're using new format
+    if (updatedProvider.api_keys.length > 0) {
+      updatedProvider.api_key = undefined;
+    }
+
+    closeApiKeyDialog();
+  };
+
+  const handleRemoveApiKey = (keyIndex: number) => {
+    if (!editingProviderData) return;
+
+    const updatedProvider = { ...editingProviderData };
+    if (updatedProvider.api_keys && updatedProvider.api_keys.length > keyIndex) {
+      updatedProvider.api_keys = updatedProvider.api_keys.filter((_, index) => index !== keyIndex);
+      setEditingProviderData(updatedProvider);
+    }
+  };
+
+  const handleToggleApiKey = (keyIndex: number, enabled: boolean) => {
+    if (!editingProviderData) return;
+
+    if (editingProviderData.api_keys && editingProviderData.api_keys[keyIndex]) {
+      const updatedApiKeys = editingProviderData.api_keys.map((key, i) =>
+        i === keyIndex ? { ...key, enabled } : key
+      );
+      const updatedProvider = { ...editingProviderData, api_keys: updatedApiKeys };
+      setEditingProviderData(updatedProvider);
+    }
+  };
+
+  // Migrate legacy api_key to new api_keys format
+  const migrateLegacyApiKey = () => {
+    if (!editingProviderData || !editingProviderData.api_key?.trim()) return;
+
+    const updatedProvider = { ...editingProviderData };
+    updatedProvider.api_keys = [
+      { key: editingProviderData.api_key, label: 'Default', enabled: true }
+    ];
+    updatedProvider.api_key = undefined;
+    setEditingProviderData(updatedProvider);
   };
 
   // Handle deletion by setting the correct index in the state
@@ -600,40 +723,108 @@ export function Providers() {
                 <Label htmlFor="api_base_url">{t("providers.api_base_url")}</Label>
                 <Input id="api_base_url" value={editingProvider.api_base_url || ''} onChange={(e) => handleProviderChange(editingProviderIndex, 'api_base_url', e.target.value)} />
               </div>
+
+              {/* API Keys Management */}
               <div className="space-y-2">
-                <Label htmlFor="api_key">{t("providers.api_key")}</Label>
-                <div className="relative">
-                  <Input 
-                    id="api_key" 
-                    type={showApiKey[editingProviderIndex || 0] ? "text" : "password"} 
-                    value={editingProvider.api_key || ''} 
-                    onChange={(e) => handleProviderChange(editingProviderIndex, 'api_key', e.target.value)} 
-                    className={apiKeyError ? "border-red-500" : ""}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
-                    onClick={() => {
-                      const index = editingProviderIndex || 0;
-                      setShowApiKey(prev => ({
-                        ...prev,
-                        [index]: !prev[index]
-                      }));
-                    }}
-                  >
-                    {showApiKey[editingProviderIndex || 0] ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+                <Label>{t("providers.api_keys")}</Label>
+
+                {/* Show warning for legacy api_key */}
+                {editingProvider.api_key && !editingProvider.api_keys && (
+                  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <p className="text-sm text-amber-800 mb-2">
+                      {t("providers.legacy_api_key_warning")}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={migrateLegacyApiKey}
+                    >
+                      {t("providers.migrate_to_multi_key")}
+                    </Button>
+                  </div>
+                )}
+
+                {/* API Keys List */}
+                {editingProvider.api_keys && editingProvider.api_keys.length > 0 ? (
+                  <div className="space-y-2">
+                    {editingProvider.api_keys.map((apiKey, keyIndex) => (
+                      <div
+                        key={keyIndex}
+                        className={`flex items-center gap-2 p-3 border rounded-md ${
+                          apiKey.enabled === false ? 'bg-gray-50 opacity-60' : 'bg-white'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">
+                              {apiKey.label || `Key ${keyIndex + 1}`}
+                            </span>
+                            {!apiKey.enabled && (
+                              <Badge variant="secondary" className="text-xs">
+                                Disabled
+                              </Badge>
+                            )}
+                            {apiKey.proxy_url && (
+                              <Badge variant="outline" className="text-xs">
+                                Proxy
+                              </Badge>
+                            )}
+                            {apiKey.weight && apiKey.weight !== 1 && (
+                              <Badge variant="outline" className="text-xs">
+                                Weight: {apiKey.weight}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 truncate mt-1">
+                            {apiKey.key.length < 12
+                              ? `•••••••••••••`
+                              : `${apiKey.key.substring(0, 8)}...${apiKey.key.substring(apiKey.key.length - 4)}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openApiKeyDialog(keyIndex)}
+                          >
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600"
+                            onClick={() => handleRemoveApiKey(keyIndex)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* Add API Key button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openApiKeyDialog(undefined, true)}
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {t("providers.add_api_key")}
+                </Button>
+
+                {/* Error display */}
                 {apiKeyError && (
                   <p className="text-sm text-red-500">{apiKeyError}</p>
                 )}
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="models">{t("providers.models")}</Label>
                 <div className="space-y-2">
@@ -1051,6 +1242,106 @@ export function Providers() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletingProviderIndex(null)}>{t("providers.cancel")}</Button>
             <Button variant="destructive" onClick={() => deletingProviderIndex !== null && handleRemoveProvider(deletingProviderIndex)}>{t("providers.delete")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* API Key Edit Dialog */}
+      <Dialog open={apiKeyDialogOpen} onOpenChange={(open) => {
+        if (!open) closeApiKeyDialog();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isNewApiKey ? t("providers.add_api_key") : t("providers.edit_api_key")}
+            </DialogTitle>
+            <DialogDescription>
+              {isNewApiKey
+                ? t("providers.add_api_key_description")
+                : t("providers.edit_api_key_description")}
+            </DialogDescription>
+          </DialogHeader>
+          {editingApiKeyData && editingProviderIndex !== null && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">{t("providers.api_key")} *</Label>
+                <div className="relative">
+                  <Input
+                    id="apiKey"
+                    type={showApiKey[getApiKeyVisibilityKey(editingProviderIndex, editingApiKeyIndex ?? 0)] ? "text" : "password"}
+                    value={editingApiKeyData.key || ''}
+                    onChange={(e) => setEditingApiKeyData({ ...editingApiKeyData, key: e.target.value })}
+                    placeholder="sk-..."
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8"
+                    onClick={() => {
+                      const key = getApiKeyVisibilityKey(editingProviderIndex, editingApiKeyIndex ?? 0);
+                      setShowApiKey(prev => ({
+                        ...prev,
+                        [key]: !prev[key]
+                      }));
+                    }}
+                  >
+                    {showApiKey[getApiKeyVisibilityKey(editingProviderIndex, editingApiKeyIndex ?? 0)] ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="apiKeyLabel">{t("providers.api_key_label")}</Label>
+                <Input
+                  id="apiKeyLabel"
+                  value={editingApiKeyData.label || ''}
+                  onChange={(e) => setEditingApiKeyData({ ...editingApiKeyData, label: e.target.value })}
+                  placeholder={t("providers.api_key_label_placeholder")}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="apiKeyProxy">{t("providers.api_key_proxy")}</Label>
+                <Input
+                  id="apiKeyProxy"
+                  value={editingApiKeyData.proxy_url || ''}
+                  onChange={(e) => setEditingApiKeyData({ ...editingApiKeyData, proxy_url: e.target.value })}
+                  placeholder="http://proxy:7890"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="apiKeyWeight">{t("providers.api_key_weight")}</Label>
+                <Input
+                  id="apiKeyWeight"
+                  type="number"
+                  min="1"
+                  value={editingApiKeyData.weight || 1}
+                  onChange={(e) => setEditingApiKeyData({ ...editingApiKeyData, weight: parseInt(e.target.value) || 1 })}
+                />
+                <p className="text-xs text-gray-500">
+                  {t("providers.api_key_weight_description")}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="apiKeyEnabled">{t("providers.api_key_enabled")}</Label>
+                <Switch
+                  id="apiKeyEnabled"
+                  checked={editingApiKeyData.enabled !== false}
+                  onCheckedChange={(checked) => setEditingApiKeyData({ ...editingApiKeyData, enabled: checked })}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeApiKeyDialog}>{t("providers.cancel")}</Button>
+            <Button onClick={handleSaveApiKey}>{t("app.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
