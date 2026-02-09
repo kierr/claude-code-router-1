@@ -566,6 +566,15 @@ export const registerApiRoutes = async (
       const hasLegacyApiKey = !!apiKey?.trim();
       const hasNewApiKeys = !!apiKeys && Array.isArray(apiKeys) && apiKeys.length > 0;
 
+      // Reject if both legacy and new formats are provided
+      if (hasLegacyApiKey && hasNewApiKeys) {
+        throw createApiError(
+          "Cannot specify both 'apiKey' and 'apiKeys'. Use 'apiKeys' for new integrations.",
+          400,
+          "invalid_request"
+        );
+      }
+
       if (!hasLegacyApiKey && !hasNewApiKeys) {
         throw createApiError(
           "At least one API key is required (use 'apiKey' for legacy single key or 'apiKeys' for multiple keys)",
