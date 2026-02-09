@@ -70,7 +70,7 @@ function createApp(options: FastifyServerOptions = {}): FastifyInstance {
 class Server {
   private app: FastifyInstance;
   configService: ConfigService;
-  providerService: ProviderService;
+  providerService!: ProviderService;
   apiKeyService: ApiKeyService;
   transformerService: TransformerService;
   tokenizerService: TokenizerService;
